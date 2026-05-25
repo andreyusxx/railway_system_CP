@@ -12,7 +12,8 @@ class RailwayApp(ctk.CTk):
         super().__init__()
         self.title("Залізнична система 2.0")
         self.geometry("400x300")
-        self.resizable(False, False)
+        self.state('zoomed')
+        self.resizable(True, True)
         self.current_user = None
         self.show_login_screen()
 
@@ -104,39 +105,74 @@ class RailwayApp(ctk.CTk):
         finally:
             session.close()
     def show_main_interface(self):
-        self.geometry("900x600")
-        self.resizable(True, True)
-        
-        # Використовуємо об'єкт користувача з БД
-        self.info_label = ctk.CTkLabel(self, text=f"Користувач: {self.current_user.login} | Роль: {self.current_user.role}")
-        self.info_label.pack(pady=5, padx=20, anchor="e")
+        """Створення веб-подібного інтерфейсу після успішного входу"""
+        # 1. БІЧНА ПАНЕЛЬ (САЙДБАР)
+        self.sidebar_frame = ctk.CTkFrame(self, width=220, corner_radius=0, fg_color=("gray90", "gray15"))
+        self.sidebar_frame.pack(side="left", fill="y")
+        self.sidebar_frame.pack_propagate(False) 
 
-        self.tabview = ctk.CTkTabview(self)
-        self.tabview.pack(pady=10, padx=20, fill="both", expand=True)
+        # Логотип та інфо про поточного користувача
+        ctk.CTkLabel(self.sidebar_frame, text="ЗАЛІЗНИЧНА КАСА", font=("Arial", 18, "bold"), text_color="#1F6AA5").pack(pady=(30, 5), padx=10)
+        ctk.CTkLabel(self.sidebar_frame, text=f"👤 {self.current_user.login}\n({self.current_user.role})", font=("Arial", 12)).pack(pady=(0, 20), padx=10)
 
-        self.tabview.add("Розклад")
-        self.setup_schedule_tab()
+        # Кнопки меню для звичайних користувачів
+        self.btn_schedule = ctk.CTkButton(
+            self.sidebar_frame, text="📅 Розклад рейсів", anchor="w", 
+            fg_color="transparent", 
+            text_color=("gray10", "gray90"),      
+            hover_color=("gray80", "gray25"),     
+            command=self.show_schedule_page
+        )
+        self.btn_schedule.pack(pady=5, padx=15, fill="x")
 
-        self.setup_profile_tab()
-
+        self.btn_profile = ctk.CTkButton(
+            self.sidebar_frame, text="🎫 Мій Профіль", anchor="w", 
+            fg_color="transparent", 
+            text_color=("gray10", "gray90"), 
+            hover_color=("gray80", "gray25"), 
+            command=self.show_profile_page
+        )
+        self.btn_profile.pack(pady=5, padx=15, fill="x")
+        # Кнопки меню тільки для Адміністратора
         if self.current_user.role == "Admin":
-            self.tabview.add("Керування")
-            self.tabview.add("Ролі")
-            self.setup_admin_tabs()
-    def setup_profile_tab(self):
+            ctk.CTkLabel(self.sidebar_frame, text="АДМІНІСТРУВАННЯ", font=("Arial", 11, "bold"), text_color="gray50").pack(pady=(20, 5), padx=15, anchor="w")
+            
+            self.btn_manage = ctk.CTkButton(
+                self.sidebar_frame, text="⚙️ Керування", anchor="w", 
+                fg_color="transparent", 
+                text_color=("gray10", "gray90"), hover_color=("gray80", "gray25"),
+                command=self.show_manage_page
+            )
+            self.btn_manage.pack(pady=5, padx=15, fill="x")
+            
+            self.btn_roles = ctk.CTkButton(
+                self.sidebar_frame, text="🛡️ Ролі", anchor="w", 
+                fg_color="transparent", 
+                text_color=("gray10", "gray90"), hover_color=("gray80", "gray25"),
+                command=self.show_roles_page
+            )
+            self.btn_roles.pack(pady=5, padx=15, fill="x")
+        self.main_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_container.pack(side="right", fill="both", expand=True, padx=20, pady=20)
+
+        self.show_schedule_page()
+    def clear_main_container(self):
+        """Видаляє всі віджети з правої панелі перед завантаженням нової сторінки"""
+        for widget in self.main_container.winfo_children():
+            widget.destroy()
+    def show_profile_page(self):
         """Створення інтерфейсу вкладки профілю користувача"""
-        tab = self.tabview.add("Мій Профіль")
-        
+        self.clear_main_container()
         # Блок інформації про користувача
-        ctk.CTkLabel(tab, text="ПРОФІЛЬ КОРИСТУВАЧА", font=("Arial", 16, "bold")).pack(pady=10)
-        self.lbl_profile_user = ctk.CTkLabel(tab, text=f"Логін: {self.current_user.login} | Роль: {self.current_user.role}", font=("Arial", 12))
+        ctk.CTkLabel(self.main_container, text="ПРОФІЛЬ КОРИСТУВАЧА", font=("Arial", 16, "bold")).pack(pady=10)
+        self.lbl_profile_user = ctk.CTkLabel(self.main_container, text=f"Логін: {self.current_user.login} | Роль: {self.current_user.role}", font=("Arial", 12))
         self.lbl_profile_user.pack(pady=5)
         
-        ctk.CTkLabel(tab, text="Історія ваших бронювань квитків:", font=("Arial", 14, "bold")).pack(pady=10)
+        ctk.CTkLabel(self.main_container, text="Історія ваших бронювань квитків:", font=("Arial", 14, "bold")).pack(pady=10)
         
         # Таблиця куплених квитків
         columns = ("ticket_id", "route", "date", "time", "seat", "price")
-        self.profile_tree = ttk.Treeview(tab, columns=columns, show="headings")
+        self.profile_tree = ttk.Treeview(self.main_container, columns=columns, show="headings")
         
         for col in columns:
             self.profile_tree.heading(col, text=col.capitalize())
@@ -169,12 +205,11 @@ class RailwayApp(ctk.CTk):
                     ))
         finally:
             session.close()
-    def setup_schedule_tab(self):
+    def show_schedule_page(self):
         """Завантаження реальних даних з таблиці routes"""
-        tab = self.tabview.tab("Розклад")
-        
+        self.clear_main_container()
         # --- НОВА ПАНЕЛЬ ПОШУКУ ---
-        search_frame = ctk.CTkFrame(tab)
+        search_frame = ctk.CTkFrame(self.main_container)
         search_frame.pack(pady=10, fill="x", padx=10)
         
         self.entry_search_dep = ctk.CTkEntry(search_frame, placeholder_text="Звідки (напр. Київ)")
@@ -184,7 +219,7 @@ class RailwayApp(ctk.CTk):
         ctk.CTkButton(search_frame, text="Скинути", fg_color="gray", command=self.load_all_routes).pack(side="left", padx=5)
 
         columns = ("id", "train", "route", "date", "time", "price", "seats")
-        self.tree = ttk.Treeview(tab, columns=columns, show="headings")
+        self.tree = ttk.Treeview(self.main_container, columns=columns, show="headings")
         for col in columns:
             self.tree.heading(col, text=col.capitalize())
             # Можна трохи звузити колонку ціни
@@ -208,7 +243,7 @@ class RailwayApp(ctk.CTk):
         self.load_all_routes()
         
         self.tree.pack(expand=True, fill="both", padx=10, pady=10)
-        ctk.CTkButton(tab, text="Забронювати квиток", command=self.book_ticket_event).pack(pady=10)
+        ctk.CTkButton(self.main_container, text="Забронювати квиток", command=self.book_ticket_event).pack(pady=10)
     def generate_sales_report(self):
         """Логіка генерації звіту продажів"""
         session = SessionLocal()
@@ -231,36 +266,47 @@ class RailwayApp(ctk.CTk):
             messagebox.showerror("Помилка", f"Не вдалося згенерувати звіт: {e}")
         finally:
             session.close()
-    def setup_admin_tabs(self):
-        """Повноцінний адмін-функціонал"""
-        # Керування рейсами
-        tab = self.tabview.tab("Керування")
-        self.entry_train_id = ctk.CTkEntry(tab, placeholder_text="ID потяга", width=300)
+    def show_manage_page(self):
+        """Сторінка керування розкладом та звітами"""
+        self.clear_main_container()
+
+        ctk.CTkLabel(self.main_container, text="Керування рейсами", font=("Arial", 18, "bold")).pack(pady=(10, 20))
+
+        # Форма додавання рейсів
+        self.entry_train_id = ctk.CTkEntry(self.main_container, placeholder_text="ID потяга", width=300)
         self.entry_train_id.pack(pady=5)
-        self.entry_dep = ctk.CTkEntry(tab, placeholder_text="Звідки", width=300)
+        self.entry_dep = ctk.CTkEntry(self.main_container, placeholder_text="Звідки", width=300)
         self.entry_dep.pack(pady=5)
-        self.entry_arr = ctk.CTkEntry(tab, placeholder_text="Куди", width=300)
+        self.entry_arr = ctk.CTkEntry(self.main_container, placeholder_text="Куди", width=300)
         self.entry_arr.pack(pady=5)
-        self.entry_date = ctk.CTkEntry(tab, placeholder_text="Дата (YYYY-MM-DD)", width=300)
+        self.entry_date = ctk.CTkEntry(self.main_container, placeholder_text="Дата (YYYY-MM-DD)", width=300)
         self.entry_date.pack(pady=5)
-        self.entry_time = ctk.CTkEntry(tab, placeholder_text="Час (HH:MM)", width=300)
+        self.entry_time = ctk.CTkEntry(self.main_container, placeholder_text="Час (HH:MM)", width=300)
         self.entry_time.pack(pady=5)
-        self.entry_price = ctk.CTkEntry(tab, placeholder_text="Ціна (напр. 650.50)", width=300)
+        self.entry_price = ctk.CTkEntry(self.main_container, placeholder_text="Ціна (напр. 650.50)", width=300)
         self.entry_price.pack(pady=5)
 
-        ctk.CTkButton(tab, text="ЗБЕРЕГТИ РЕЙС", fg_color="green", 
-                      command=self.add_route_event).pack(pady=20)
-        
+        ctk.CTkButton(self.main_container, text="ЗБЕРЕГТИ РЕЙС", fg_color="green", command=self.add_route_event).pack(pady=15)
 
-        # Ролі
-        role_tab = self.tabview.tab("Ролі")
-        self.entry_target_user = ctk.CTkEntry(role_tab, placeholder_text="Логін")
-        self.entry_target_user.pack(pady=5)
+        # Кнопка для генерації звіту ідеально підходить саме для цієї сторінки
+        ctk.CTkLabel(self.main_container, text="Фінансова статистика", font=("Arial", 16, "bold")).pack(pady=(20, 10))
+        ctk.CTkButton(self.main_container, text="ЗГЕНЕРУВАТИ ЗВІТ ПРОДАЖІВ", fg_color="blue", command=self.generate_sales_report).pack(pady=5)
+
+
+    def show_roles_page(self):
+        """Окрема сторінка керування ролями користувачів"""
+        self.clear_main_container()
+
+        ctk.CTkLabel(self.main_container, text="Керування правами доступу", font=("Arial", 18, "bold")).pack(pady=(10, 20))
+
+        # Форма зміни ролей
+        self.entry_target_user = ctk.CTkEntry(self.main_container, placeholder_text="Введіть логін користувача", width=300)
+        self.entry_target_user.pack(pady=10)
+
         self.role_var = ctk.StringVar(value="User")
-        ctk.CTkSegmentedButton(role_tab, values=["User", "Admin"], variable=self.role_var).pack(pady=10)
-        ctk.CTkButton(role_tab, text="ОНОВИТИ ПРАВА", command=self.update_role_event).pack(pady=10)
-        ctk.CTkButton(tab, text="ЗГЕНЕРУВАТИ ЗВІТ ПРОДАЖІВ", fg_color="blue", 
-                      command=self.generate_sales_report).pack(pady=20)
+        ctk.CTkSegmentedButton(self.main_container, values=["User", "Admin"], variable=self.role_var).pack(pady=10)
+
+        ctk.CTkButton(self.main_container, text="ОНОВИТИ ПРАВА", command=self.update_role_event).pack(pady=20)
     def add_route_event(self):
         """Логіка збереження в БД"""
         session = SessionLocal()
