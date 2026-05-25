@@ -44,7 +44,65 @@ class RailwayApp(ctk.CTk):
             messagebox.showerror("Помилка БД", f"Зв'язок з базою втрачено: {e}")
         finally:
             session.close()
+    def load_all_routes(self):
+        """Завантажує всі рейси (скидає фільтр)"""
+        for item in self.tree.get_children():
+            self.tree.delete(item) # Очищаємо таблицю
+            
+        session = SessionLocal()
+        try:
+            routes = session.query(Route).all()
+            for r in routes:
+                train = session.query(Train).filter(Train.id == r.train_id).first()
+                total = train.total_seats if train else 50  # 50 за замовчуванням
 
+                booked = session.query(Ticket).filter(Ticket.route_id == r.id).count()
+
+                free_seats = total - booked
+                
+                self.tree.insert("", "end", values=(
+                    r.id, 
+                    r.train_id, 
+                    f"{r.departure_station}-{r.arrival_station}", 
+                    r.date, 
+                    r.time, 
+                    f"{r.price} грн",
+                    f"{free_seats} / {total}" 
+                ))
+        finally:
+            session.close()
+
+    def search_routes_event(self):
+        """Фільтрує рейси за станцією відправлення та вираховує вільні місця"""
+        search_query = self.entry_search_dep.get().strip().lower()
+        if not search_query:
+            return
+            
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+            
+        session = SessionLocal()
+        try:
+            routes = session.query(Route).filter(Route.departure_station.ilike(f"%{search_query}%")).all()
+            for r in routes:
+                train = session.query(Train).filter(Train.id == r.train_id).first()
+                total = train.total_seats if train else 50
+                
+                booked = session.query(Ticket).filter(Ticket.route_id == r.id).count()
+                
+                free_seats = total - booked
+                
+                self.tree.insert("", "end", values=(
+                    r.id, 
+                    r.train_id, 
+                    f"{r.departure_station}-{r.arrival_station}", 
+                    r.date, 
+                    r.time, 
+                    f"{r.price} грн",
+                    f"{free_seats} / {total}"  
+                ))
+        finally:
+            session.close()
     def show_main_interface(self):
         self.geometry("900x600")
         self.resizable(True, True)
@@ -59,15 +117,74 @@ class RailwayApp(ctk.CTk):
         self.tabview.add("Розклад")
         self.setup_schedule_tab()
 
+        self.setup_profile_tab()
+
         if self.current_user.role == "Admin":
             self.tabview.add("Керування")
             self.tabview.add("Ролі")
             self.setup_admin_tabs()
+    def setup_profile_tab(self):
+        """Створення інтерфейсу вкладки профілю користувача"""
+        tab = self.tabview.add("Мій Профіль")
+        
+        # Блок інформації про користувача
+        ctk.CTkLabel(tab, text="ПРОФІЛЬ КОРИСТУВАЧА", font=("Arial", 16, "bold")).pack(pady=10)
+        self.lbl_profile_user = ctk.CTkLabel(tab, text=f"Логін: {self.current_user.login} | Роль: {self.current_user.role}", font=("Arial", 12))
+        self.lbl_profile_user.pack(pady=5)
+        
+        ctk.CTkLabel(tab, text="Історія ваших бронювань квитків:", font=("Arial", 14, "bold")).pack(pady=10)
+        
+        # Таблиця куплених квитків
+        columns = ("ticket_id", "route", "date", "time", "seat", "price")
+        self.profile_tree = ttk.Treeview(tab, columns=columns, show="headings")
+        
+        for col in columns:
+            self.profile_tree.heading(col, text=col.capitalize())
+            self.profile_tree.column(col, width=100, anchor="center")
+            
+        self.profile_tree.pack(expand=True, fill="both", padx=10, pady=10)
+        
+        # Завантажуємо квитки
+        self.load_user_tickets()
 
+    def load_user_tickets(self):
+        """Читання з БД квитків поточного користувача"""
+        for item in self.profile_tree.get_children():
+            self.profile_tree.delete(item)
+            
+        session = SessionLocal()
+        try:
+            # Вибираємо квитки, де user_id дорівнює id поточного користувача
+            user_tickets = session.query(Ticket).filter(Ticket.user_id == self.current_user.id).all()
+            for t in user_tickets:
+                route = session.query(Route).filter(Route.id == t.route_id).first()
+                if route:
+                    self.profile_tree.insert("", "end", values=(
+                        t.id,
+                        f"{route.departure_station}-{route.arrival_station}",
+                        route.date,
+                        route.time,
+                        t.seat_number,
+                        f"{t.price} грн"
+                    ))
+        finally:
+            session.close()
     def setup_schedule_tab(self):
         """Завантаження реальних даних з таблиці routes"""
-        columns = ("id", "train", "route", "date", "time", "price")
-        self.tree = ttk.Treeview(self.tabview.tab("Розклад"), columns=columns, show="headings")
+        tab = self.tabview.tab("Розклад")
+        
+        # --- НОВА ПАНЕЛЬ ПОШУКУ ---
+        search_frame = ctk.CTkFrame(tab)
+        search_frame.pack(pady=10, fill="x", padx=10)
+        
+        self.entry_search_dep = ctk.CTkEntry(search_frame, placeholder_text="Звідки (напр. Київ)")
+        self.entry_search_dep.pack(side="left", padx=5)
+        
+        ctk.CTkButton(search_frame, text="Знайти", command=self.search_routes_event).pack(side="left", padx=5)
+        ctk.CTkButton(search_frame, text="Скинути", fg_color="gray", command=self.load_all_routes).pack(side="left", padx=5)
+
+        columns = ("id", "train", "route", "date", "time", "price", "seats")
+        self.tree = ttk.Treeview(tab, columns=columns, show="headings")
         for col in columns:
             self.tree.heading(col, text=col.capitalize())
             # Можна трохи звузити колонку ціни
@@ -88,10 +205,32 @@ class RailwayApp(ctk.CTk):
                 ))
         finally:
             session.close()
+        self.load_all_routes()
         
         self.tree.pack(expand=True, fill="both", padx=10, pady=10)
-        ctk.CTkButton(self.tabview.tab("Розклад"), text="Забронювати квиток", command=self.book_ticket_event).pack(pady=10)
-
+        ctk.CTkButton(tab, text="Забронювати квиток", command=self.book_ticket_event).pack(pady=10)
+    def generate_sales_report(self):
+        """Логіка генерації звіту продажів"""
+        session = SessionLocal()
+        try:
+            tickets = session.query(Ticket).all()
+            total_revenue = sum([float(t.price) for t in tickets if t.price])
+            
+            report_filename = "Sales_Report_2026.txt"
+            report_text = (
+                f"=== ФІНАНСОВИЙ ЗВІТ 'ЗАЛІЗНИЧНА КАСА' ===\n"
+                f"Всього продано квитків: {len(tickets)} шт.\n"
+                f"Загальна виручка системи: {total_revenue} грн\n"
+                f"==========================================="
+            )
+            with open(report_filename, "w", encoding="utf-8") as f:
+                f.write(report_text)
+                
+            messagebox.showinfo("Звіт", f"Статистику успішно вивантажено у файл:\n{report_filename}")
+        except Exception as e:
+            messagebox.showerror("Помилка", f"Не вдалося згенерувати звіт: {e}")
+        finally:
+            session.close()
     def setup_admin_tabs(self):
         """Повноцінний адмін-функціонал"""
         # Керування рейсами
@@ -120,7 +259,8 @@ class RailwayApp(ctk.CTk):
         self.role_var = ctk.StringVar(value="User")
         ctk.CTkSegmentedButton(role_tab, values=["User", "Admin"], variable=self.role_var).pack(pady=10)
         ctk.CTkButton(role_tab, text="ОНОВИТИ ПРАВА", command=self.update_role_event).pack(pady=10)
-
+        ctk.CTkButton(tab, text="ЗГЕНЕРУВАТИ ЗВІТ ПРОДАЖІВ", fg_color="blue", 
+                      command=self.generate_sales_report).pack(pady=20)
     def add_route_event(self):
         """Логіка збереження в БД"""
         session = SessionLocal()
@@ -197,6 +337,23 @@ class RailwayApp(ctk.CTk):
                 )
                 session.add(new_ticket)
                 session.commit()
+                self.load_all_routes()     
+                self.load_user_tickets()   
+                invoice_filename = f"Invoice_Ticket_{new_ticket.id}.txt"
+                invoice_text = (
+                    f"====================================\n"
+                    f"        РАХУНОК НА ОПЛАТУ №{new_ticket.id}      \n"
+                    f"====================================\n"
+                    f"Пасажир ID: {self.current_user.id}\n"
+                    f"Рейс: {route.departure_station} - {route.arrival_station}\n"
+                    f"Дата та час: {route.date} | {route.time}\n"
+                    f"Місце: {new_ticket.seat_number}\n"
+                    f"------------------------------------\n"
+                    f"ДО СПЛАТИ: {route.price} грн\n"
+                    f"===================================="
+                )
+                with open(invoice_filename, "w", encoding="utf-8") as f:
+                    f.write(invoice_text)
                 messagebox.showinfo("Успіх", f"Квиток заброньовано! Ціна: {route.price} грн")
         except Exception as e:
             session.rollback()
@@ -207,3 +364,4 @@ class RailwayApp(ctk.CTk):
 if __name__ == "__main__":
     app = RailwayApp()
     app.mainloop()
+

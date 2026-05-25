@@ -14,15 +14,22 @@ services:
       - "${DB_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   app:
     build: .
+    container_name: railway_app_container
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://andrii:your_secure_password@db:5432/zaliznychna_kasa
-    depends_on:
-      - db
 
 volumes:
   postgres_data:
