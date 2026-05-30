@@ -3,6 +3,7 @@ from tkinter import ttk, messagebox
 # Імпортуємо ваші файли проєкту
 from database import SessionLocal
 from models import User, Route, Train, Ticket
+import hashlib
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -30,12 +31,15 @@ class RailwayApp(ctk.CTk):
     def authenticate(self):
         """Реальна перевірка користувача через базу даних"""
         login = self.entry_login.get()
-        password = self.entry_pass.get()
-
+        raw_password = self.entry_pass.get()
+        # Хешуємо введений пароль алгоритмом SHA-256
+        hashed_password = hashlib.sha256(raw_password.encode()).hexdigest()
+        
         session = SessionLocal()
         try:
             user = session.query(User).filter(User.login == login).first()
-            if user and user.password == password: # У продакшні тут має бути хеш!
+            # Порівнюємо хеші
+            if user and user.password == hashed_password:
                 self.current_user = user
                 self.login_frame.destroy()
                 self.show_main_interface()
@@ -383,8 +387,11 @@ class RailwayApp(ctk.CTk):
                 )
                 session.add(new_ticket)
                 session.commit()
-                self.load_all_routes()     
-                self.load_user_tickets()   
+                if hasattr(self, 'load_all_routes'):
+                    self.load_all_routes()     
+                
+                if hasattr(self, 'profile_tree') and self.profile_tree.winfo_exists():
+                    self.load_user_tickets()  
                 invoice_filename = f"Invoice_Ticket_{new_ticket.id}.txt"
                 invoice_text = (
                     f"====================================\n"
