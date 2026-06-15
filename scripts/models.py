@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Date, Time, Numeric, ForeignKey
 from sqlalchemy.orm import relationship
-from database import Base # Ми використовуємо базу, яку ви створили в database.py
+from database import Base 
 
 class User(Base):
     __tablename__ = 'users'

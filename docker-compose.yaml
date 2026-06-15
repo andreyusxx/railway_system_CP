@@ -21,7 +21,7 @@ services:
       retries: 5
 
   app:
-    build: .
+    image: andreyusxx/coursework:1.0
     container_name: railway_app_container
     env_file:
       - .env
